@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: RSF Crowd Meter Data Collector
+
+Parameters:
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of existing EC2 KeyPair
+
+  DensityToken:
+    Type: String
+    Description: Density API Token
+
+  RepoURL:
+    Type: String
+    Default: https://github.com/chiruhaas/rsf-crowdmeter-data.git
+
+Resources:
+  RSFInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      KeyName: !Ref KeyName
+      ImageId: ami-08d70e59c07c61a3a
+
+      SecurityGroupIds:
+        - !Ref InstanceSecurityGroup
+
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+
+          # install dependencies
+          apt update -y
+          apt install -y curl git cron
+
+          # install Node.js (LTS)
+          curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+          apt-get install -y nodejs
+
+          # start cron
+          systemctl enable cron
+          systemctl start cron
+
+          cd /home/ubuntu
+
+          # clone repo
+          git clone ${RepoURL}
+          REPO_NAME=$(basename ${RepoURL} .git)
+
+          cd $REPO_NAME/backend
+
+          # install + build
+          npm install
+          npm run build
+
+          # set env variable
+          echo "DensityToken=${DensityToken}" >> .env
+
+          # find node path (important for cron)
+          NODE_PATH=$(which node)
+
+          # create cron jobs
+          cat <<EOF > mycron
+          "* 7-23 * * 1-5 $NODE_PATH /home/ubuntu/$REPO_NAME/backend/dist/main.js >> /home/ubuntu/log.txt 2>&1"
+          "* 8-18 * * 6   $NODE_PATH /home/ubuntu/$REPO_NAME/backend/dist/main.js >> /home/ubuntu/log.txt 2>&1"
+          "* 8-23 * * 0   $NODE_PATH /home/ubuntu/$REPO_NAME/backend/dist/main.js >> /home/ubuntu/log.txt 2>&1"
+          EOF
+
+          # install cron jobs
+          crontab mycron
+
+          # log completion
+          echo "Setup complete" >> /home/ubuntu/setup.log
+
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+Outputs:
+  InstancePublicIP:
+    Description: Public IP of EC2 instance
+    Value: !GetAtt RSFInstance.PublicIp

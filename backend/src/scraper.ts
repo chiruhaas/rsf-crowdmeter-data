@@ -12,7 +12,7 @@ export async function fetchCrowdData() {
     const response = await fetch(requestUrl, {
         method: 'GET',
         headers: {
-            'Authorization': `Bearer ${process.env.DENSITY_TOKEN}`
+            'Authorization': `Bearer ${process.env.DensityToken}`
         }
     });
 
