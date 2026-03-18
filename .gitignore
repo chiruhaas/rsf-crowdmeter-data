@@ -1,0 +1,16 @@
+# === Backend ===
+backend/.env
+backend/node_modules/
+backend/dist/
+
+# logs
+backend/*.log
+
+# data (if inside backend)
+backend/data/
+backend/*.csv
+
+# === General ===
+.DS_Store
+.env
+*.log
