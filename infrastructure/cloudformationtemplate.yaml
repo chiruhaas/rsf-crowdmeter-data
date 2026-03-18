@@ -19,7 +19,7 @@ Resources:
   RSFInstance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: t2.micro
+      InstanceType: t3.micro
       KeyName: !Ref KeyName
       ImageId: ami-08d70e59c07c61a3a
 
