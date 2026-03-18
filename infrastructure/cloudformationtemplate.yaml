@@ -21,7 +21,7 @@ Resources:
     Properties:
       InstanceType: t3.micro
       KeyName: !Ref KeyName
-      ImageId: ami-0fc5d935ebf8bc3bc
+      ImageId: ami-0d76b909de1a0595d
 
       SecurityGroupIds:
         - !Ref InstanceSecurityGroup
@@ -35,8 +35,11 @@ Resources:
           apt update -y
           apt install -y curl git cron
 
+          # install build tools
+          apt-get install -y build-essential python3 make g++
+
           # install Node.js (LTS)
-          curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
           apt-get install -y nodejs
 
           # start cron
