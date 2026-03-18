@@ -21,7 +21,7 @@ Resources:
     Properties:
       InstanceType: t3.micro
       KeyName: !Ref KeyName
-      ImageId: ami-08d70e59c07c61a3a
+      ImageId: ami-0fc5d935ebf8bc3bc
 
       SecurityGroupIds:
         - !Ref InstanceSecurityGroup
