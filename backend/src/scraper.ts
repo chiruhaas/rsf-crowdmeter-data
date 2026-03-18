@@ -1,12 +1,12 @@
 import "dotenv/config";
 
-interface CrowdInfo {
+export interface CrowdInfo {
     currentCount: number;
     capacity: number;
     percent: number;
 }
 
-async function fetchCrowdData() {
+export async function fetchCrowdData() {
     const requestUrl = "https://api.density.io/v2/spaces"
 
     const response = await fetch(requestUrl, {

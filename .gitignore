@@ -14,3 +14,4 @@ backend/*.csv
 .DS_Store
 .env
 *.log
+rsf.db
