@@ -1,16 +1,19 @@
 # === Backend ===
 backend/.env
-backend/node_modules/
 backend/dist/
-
-# logs
 backend/*.log
-
-# data (if inside backend)
 backend/data/
 backend/*.csv
 
+# === CDK ===
+*.js
+!cdk/jest.config.js
+*.d.ts
+cdk/.cdk.staging/
+cdk/cdk.out/
+
 # === General ===
+node_modules/
 .DS_Store
 .env
 *.log

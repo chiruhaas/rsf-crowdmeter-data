@@ -34,3 +34,25 @@ export async function fetchCrowdData() {
 
     return info;
 }
+
+export function isRSFOpen(): boolean {
+    const now = new Date();
+    const hour = now.getHours();
+    const day = now.getDay();
+
+    if (day >= 1 && day <= 5) {
+        return hour >= 7 && hour < 23;
+    }
+
+    // Saturday hours
+    if (day === 6) {
+        return hour >= 8 && hour < 18;
+    }
+
+    // Sunday hours
+    if (day === 0) {
+        return hour >= 8 && hour < 23;
+    }
+
+    return false;
+}

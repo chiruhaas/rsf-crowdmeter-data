@@ -1,14 +1,18 @@
-import { fetchCrowdData } from "./scraper";
+import { fetchCrowdData, isRSFOpen } from "./scraper";
 import { saveToDB } from "./storage";
 
 async function main() {
+    if (!isRSFOpen()) {
+        console.log("RSF closed — skipping");
+        process.exit(0);
+    }
     try {
         const data = await fetchCrowdData();
-        saveToDB(data);
+        await saveToDB(data);
 
         console.log("Saved to DB");
     } catch (err) {
-        console.error(err);
+        console.error("Pipeline Failed:", err);
     }
 }
 
