@@ -36,9 +36,9 @@ export async function fetchCrowdData() {
 }
 
 export function isRSFOpen(): boolean {
-    const now = new Date();
-    const hour = now.getHours();
-    const day = now.getDay();
+    const pst = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+    const hour = pst.getHours();
+    const day = pst.getDay();
 
     if (day >= 1 && day <= 5) {
         return hour >= 7 && hour < 23;
