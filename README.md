@@ -4,7 +4,7 @@
 
 :weight_lifting:  A tool for UC Berkeley students to find the optimal time to visit the RSF (Recreational Sports Facility) weight room, based on historical crowd data. 
 
-Ever walk into the weight room in RSF, just to see 0 available machines? Or maybe people with absolutely no spacial awareness brushing by you mid set? This tool will help you decide when the weight room is least packed and you can finish your workout in peace.
+Ever walk into the weight room in RSF, just to see 0 available machines? Or maybe people with absolutely no spatial awareness brushing by you mid set? This tool will help you decide when the weight room is least packed and you can finish your workout in peace.
 
 ## How it works
 
