@@ -7,6 +7,7 @@ backend/*.csv
 
 # === CDK ===
 *.js
+cdk/cdk.context.json
 !cdk/jest.config.js
 *.d.ts
 cdk/.cdk.staging/
