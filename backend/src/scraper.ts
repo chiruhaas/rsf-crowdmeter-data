@@ -17,7 +17,7 @@ export async function fetchCrowdData() {
     });
 
     if (!response.ok) {
-        throw new Error(`Error status: ${response.status}, Error message: ${await response.text}`);
+        throw new Error(`Error status: ${response.status}, Error message: ${await response.text()}`);
     }
 
     const data = await response.json();
