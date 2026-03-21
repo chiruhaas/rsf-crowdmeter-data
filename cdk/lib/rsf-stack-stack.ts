@@ -1,121 +1,136 @@
 import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as rds from 'aws-cdk-lib/aws-rds';
+import * as iam from 'aws-cdk-lib/aws-iam';
 
 export interface RsfStackStackProps extends cdk.StackProps {
-  /**
-   * Name of existing EC2 KeyPair
-   */
+  /** Name of existing EC2 KeyPair */
   readonly keyName: string;
-  /**
-   * Density API Token
-   */
+  /** Density API Token */
   readonly densityToken: string;
-  /**
-   * @default 'https://github.com/chiruhaas/rsf-crowdmeter-data.git'
-   */
+  /** @default 'https://github.com/chiruhaas/rsf-crowdmeter-data.git' */
   readonly repoUrl?: string;
 }
 
-/**
- * RSF Crowd Meter Data Collector
- */
 export class RsfStackStack extends cdk.Stack {
-  /**
-   * Public IP of EC2 instance
-   */
-  public readonly instancePublicIp;
+  /** Public IP of EC2 instance */
+  public readonly instancePublicIp: string;
 
   public constructor(scope: cdk.App, id: string, props: RsfStackStackProps) {
     super(scope, id, props);
 
-    // Applying default props
-    props = {
-      ...props,
-      keyName: new cdk.CfnParameter(this, 'KeyName', {
-        type: 'AWS::EC2::KeyPair::KeyName',
-        default: props.keyName.toString(),
-        description: 'Name of existing EC2 KeyPair',
-      }).valueAsString,
-      repoUrl: props.repoUrl ?? 'https://github.com/chiruhaas/rsf-crowdmeter-data.git',
-    };
+    const repoUrl = props.repoUrl ?? 'https://github.com/chiruhaas/rsf-crowdmeter-data.git';
 
-    // Resources
-    const instanceSecurityGroup = new ec2.CfnSecurityGroup(this, 'InstanceSecurityGroup', {
-      groupDescription: 'Allow SSH access',
-      securityGroupIngress: [
-        {
-          ipProtocol: 'tcp',
-          fromPort: 22,
-          toPort: 22,
-          cidrIp: '0.0.0.0/0',
-        },
+    // VPC: EC2 in public subnet, RDS in isolated (no NAT gateway needed)
+    const vpc = new ec2.Vpc(this, 'RsfVpc', {
+      maxAzs: 2,
+      natGateways: 0,
+      subnetConfiguration: [
+        { name: 'public',   subnetType: ec2.SubnetType.PUBLIC           },
+        { name: 'isolated', subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       ],
     });
 
-    const rsfInstance = new ec2.CfnInstance(this, 'RSFInstance', {
-      instanceType: 't3.micro',
-      keyName: props.keyName!,
-      imageId: 'ami-0d76b909de1a0595d',
-      securityGroupIds: [
-        instanceSecurityGroup.ref,
-      ],
-      userData: cdk.Fn.base64(`#!/bin/bash
-      set -ex
-
-      # install dependencies
-      apt update -y
-      apt install -y curl git cron
-
-      # install build tools
-      apt-get install -y build-essential python3 make g++
-
-      # install Node.js (LTS)
-      curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-      apt-get install -y nodejs
-
-      # start cron
-      systemctl enable cron
-      systemctl start cron
-
-      cd /home/ubuntu
-
-      # clone repo
-      git clone ${props.repoUrl!}
-      REPO_NAME=$(basename ${props.repoUrl!} .git)
-
-      cd $REPO_NAME/backend
-
-      # install + build
-      npm install
-      npm run build
-
-      # set env variable
-      echo "DensityToken=${props.densityToken!}" >> .env
-
-      # find node path (important for cron)
-      NODE_PATH=$(which node)
-
-      # create cron jobs
-      cat <<EOF > mycron
-      "* 7-23 * * 1-5 $NODE_PATH /home/ubuntu/$REPO_NAME/backend/dist/main.js >> /home/ubuntu/log.txt 2>&1"
-      "* 8-18 * * 6   $NODE_PATH /home/ubuntu/$REPO_NAME/backend/dist/main.js >> /home/ubuntu/log.txt 2>&1"
-      "* 8-23 * * 0   $NODE_PATH /home/ubuntu/$REPO_NAME/backend/dist/main.js >> /home/ubuntu/log.txt 2>&1"
-      EOF
-
-      # install cron jobs
-      crontab mycron
-
-      # log completion
-      echo "Setup complete" >> /home/ubuntu/setup.log
-      `),
+    // EC2 security group: inbound SSH only, outbound unrestricted
+    const ec2Sg = new ec2.SecurityGroup(this, 'InstanceSecurityGroup', {
+      vpc,
+      description: 'EC2 - allow SSH',
+      allowAllOutbound: true,
     });
+    ec2Sg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(22), 'SSH');
+
+    // RDS security group: only accepts postgres from EC2
+    const rdsSg = new ec2.SecurityGroup(this, 'RdsSg', {
+      vpc,
+      description: 'RDS - allow postgres from EC2',
+      allowAllOutbound: false,
+    });
+    rdsSg.addIngressRule(ec2Sg, ec2.Port.tcp(5432), 'Postgres from EC2');
+
+    // RDS instance — credentials auto-generated and stored in Secrets Manager
+    const db = new rds.DatabaseInstance(this, 'rsfDB', {
+      engine: rds.DatabaseInstanceEngine.postgres({
+        version: rds.PostgresEngineVersion.VER_16,
+      }),
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO),
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      securityGroups: [rdsSg],
+      databaseName: 'rsf',
+      credentials: rds.Credentials.fromGeneratedSecret('postgres'),
+      removalPolicy: cdk.RemovalPolicy.SNAPSHOT,
+    });
+
+    // IAM role so EC2 can read the DB secret from Secrets Manager
+    const instanceRole = new iam.Role(this, 'InstanceRole', {
+      assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
+    });
+    db.secret!.grantRead(instanceRole);
+
+    // EC2 instance
+    const rsfInstance = new ec2.Instance(this, 'RSFInstance', {
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO),
+      machineImage: ec2.MachineImage.genericLinux({
+        'us-east-1': 'ami-0462ececcfe0a450f',
+      }),
+      securityGroup: ec2Sg,
+      keyPair: ec2.KeyPair.fromKeyPairName(this, 'KeyPair', props.keyName),
+      role: instanceRole,
+    });
+
+    rsfInstance.addUserData(
+      'set -ex',
+
+      // Dependencies
+      'apt update -y',
+      'apt install -y curl git cron jq',
+      'apt-get install -y build-essential python3 make g++',
+
+      // Node.js
+      'curl -fsSL https://deb.nodesource.com/setup_20.x | bash -',
+      'apt-get install -y nodejs',
+
+      // Cron
+      'systemctl enable cron',
+      'systemctl start cron',
+
+      // Clone and build
+      'cd /home/ubuntu',
+      `git clone ${repoUrl}`,
+      `REPO_NAME=$(basename ${repoUrl} .git)`,
+      'cd $REPO_NAME/backend',
+      'npm install',
+      'npm run build',
+
+      // Write .env — fetch DB password from Secrets Manager at boot time
+      `echo "DensityToken=${props.densityToken}" >> .env`,
+      `echo "DB_HOST=${db.dbInstanceEndpointAddress}" >> .env`,
+      `SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id '${db.secret!.secretArn}' --query SecretString --output text --region ${this.region})`,
+      'echo "DB_PASSWORD=$(echo $SECRET_JSON | jq -r .password)" >> .env',
+
+      // Cron jobs (every minute during open hours)
+      'NODE_PATH=$(which node)',
+      'printf "%s\n" \\',
+      `  "* 7-23 * * 1-5 \$NODE_PATH /home/ubuntu/\$REPO_NAME/backend/dist/main.js >> /home/ubuntu/log.txt 2>&1" \\`,
+      `  "* 8-18 * * 6   \$NODE_PATH /home/ubuntu/\$REPO_NAME/backend/dist/main.js >> /home/ubuntu/log.txt 2>&1" \\`,
+      `  "* 8-23 * * 0   \$NODE_PATH /home/ubuntu/\$REPO_NAME/backend/dist/main.js >> /home/ubuntu/log.txt 2>&1" \\`,
+      '  > mycron',
+      'crontab mycron',
+
+      'echo "Setup complete" >> /home/ubuntu/setup.log',
+    );
 
     // Outputs
-    this.instancePublicIp = rsfInstance.attrPublicIp;
-    new cdk.CfnOutput(this, 'CfnOutputInstancePublicIP', {
-      key: 'InstancePublicIP',
+    this.instancePublicIp = rsfInstance.instancePublicIp;
+    new cdk.CfnOutput(this, 'InstancePublicIP', {
       description: 'Public IP of EC2 instance',
-      value: this.instancePublicIp!.toString(),
+      value: this.instancePublicIp,
+    });
+    new cdk.CfnOutput(this, 'DbEndpoint', {
+      description: 'RDS endpoint',
+      value: db.dbInstanceEndpointAddress,
     });
   }
 }
