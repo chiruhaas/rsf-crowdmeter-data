@@ -85,7 +85,7 @@ export class RsfStackStack extends cdk.Stack {
 
       // Dependencies
       'apt update -y',
-      'apt install -y curl git cron jq',
+      'apt install -y curl git cron jq awscli',
       'apt-get install -y build-essential python3 make g++',
 
       // Node.js
