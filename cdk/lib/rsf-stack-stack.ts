@@ -85,12 +85,16 @@ export class RsfStackStack extends cdk.Stack {
 
       // Dependencies
       'apt update -y',
-      'apt install -y curl git cron jq awscli',
-      'apt-get install -y build-essential python3 make g++',
+      'apt install -y curl git cron jq python3-pip build-essential python3 make g++',
+      'pip3 install awscli --break-system-packages',
+      'export PATH=$PATH:/root/.local/bin',
 
       // Node.js
       'curl -fsSL https://deb.nodesource.com/setup_20.x | bash -',
       'apt-get install -y nodejs',
+
+      // postgresql-client for manual db access
+      'apt-get install -y postgresql-client',
 
       // Cron
       'systemctl enable cron',
@@ -100,6 +104,7 @@ export class RsfStackStack extends cdk.Stack {
       'cd /home/ubuntu',
       `git clone ${repoUrl}`,
       `REPO_NAME=$(basename ${repoUrl} .git)`,
+      'chown -R ubuntu:ubuntu $REPO_NAME',
       'cd $REPO_NAME/backend',
       'npm install',
       'npm run build',
@@ -110,14 +115,9 @@ export class RsfStackStack extends cdk.Stack {
       `SECRET_JSON=$(aws secretsmanager get-secret-value --secret-id '${db.secret!.secretArn}' --query SecretString --output text --region ${this.region})`,
       'echo "DB_PASSWORD=$(echo $SECRET_JSON | jq -r .password)" >> .env',
 
-      // Cron jobs (every minute during open hours)
+      // Cron job — run every minute, isRSFOpen() handles hours filtering in PST
       'NODE_PATH=$(which node)',
-      'printf "%s\n" \\',
-      `  "* 7-23 * * 1-5 \$NODE_PATH /home/ubuntu/\$REPO_NAME/backend/dist/main.js >> /home/ubuntu/log.txt 2>&1" \\`,
-      `  "* 8-18 * * 6   \$NODE_PATH /home/ubuntu/\$REPO_NAME/backend/dist/main.js >> /home/ubuntu/log.txt 2>&1" \\`,
-      `  "* 8-23 * * 0   \$NODE_PATH /home/ubuntu/\$REPO_NAME/backend/dist/main.js >> /home/ubuntu/log.txt 2>&1" \\`,
-      '  > mycron',
-      'crontab mycron',
+      `printf "* * * * * \$NODE_PATH /home/ubuntu/\$REPO_NAME/backend/dist/main.js >> /home/ubuntu/log.txt 2>&1\\n" | crontab -`,
 
       'echo "Setup complete" >> /home/ubuntu/setup.log',
     );
