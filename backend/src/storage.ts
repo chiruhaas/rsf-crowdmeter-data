@@ -6,7 +6,7 @@ export async function saveToDB(info: CrowdInfo[]) {
         throw new Error("Expected 4 crowd entries");
     }
 
-    const [total, main, annex, extension] = info as [CrowdInfo, CrowdInfo, CrowdInfo, CrowdInfo];
+    const [total, main, extension, annex] = info as [CrowdInfo, CrowdInfo, CrowdInfo, CrowdInfo];
     const timestamp = new Date().toISOString();
 
     await pool.query(
